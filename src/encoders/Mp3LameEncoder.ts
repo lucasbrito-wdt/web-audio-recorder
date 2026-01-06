@@ -159,14 +159,36 @@ function loadMp3LameEncoderInternal(scriptUrl: string): Promise<void> {
     fetch(scriptUrl, { method: 'GET', cache: 'no-cache' })
       .then(response => {
         if (!response.ok) {
-          throw new Error(`File not found: ${scriptUrl} (${response.status} ${response.statusText})`);
+          throw new Error(`File not found: ${scriptUrl} (${response.status} ${response.statusText}). Make sure the file exists and is accessible.`);
+        }
+        
+        // Verificar Content-Type
+        const contentType = response.headers.get('content-type') || '';
+        if (!contentType.includes('javascript') && !contentType.includes('application/javascript') && !contentType.includes('text/javascript')) {
+          console.warn(`Warning: Content-Type is "${contentType}", expected JavaScript. Proceeding with validation...`);
         }
         
         // Verificar se o conteúdo é JavaScript (não HTML)
         return response.text().then(text => {
+          const trimmedText = text.trim();
+          
           // Se começar com '<', provavelmente é HTML (erro 404, etc)
-          if (text.trim().startsWith('<')) {
-            throw new Error(`Invalid response from ${scriptUrl}. Expected JavaScript but received HTML. This usually means the file was not found (404).`);
+          if (trimmedText.startsWith('<')) {
+            const errorMsg = `Invalid response from ${scriptUrl}. Expected JavaScript but received HTML (likely a 404 error page).\n\n` +
+              `The file was not found at this path. Please:\n` +
+              `1. Verify the file exists at: ${scriptUrl}\n` +
+              `2. Check if you need to copy files to your public/ folder\n` +
+              `3. Ensure your server is configured to serve the file\n` +
+              `4. Try accessing the URL directly in your browser`;
+            
+            console.error(errorMsg);
+            reject(new Error(errorMsg));
+            return; // Não continuar se for HTML
+          }
+          
+          // Verificar se parece com JavaScript (contém pelo menos algumas palavras-chave comuns)
+          if (!trimmedText.includes('function') && !trimmedText.includes('var') && !trimmedText.includes('const') && !trimmedText.includes('let')) {
+            console.warn(`Warning: Response from ${scriptUrl} does not appear to be valid JavaScript.`);
           }
           
           // Criar e carregar novo script
@@ -181,7 +203,7 @@ function loadMp3LameEncoderInternal(scriptUrl: string): Promise<void> {
               if (typeof (window as any).Mp3LameEncoder !== 'undefined') {
                 resolve();
               } else {
-                reject(new Error('Mp3LameEncoder object not found after script load. The script may not have exported the global correctly.'));
+                reject(new Error(`Mp3LameEncoder object not found after script load from ${scriptUrl}. The script may not have exported the global correctly, or the file may be corrupted.`));
               }
             }, 200);
           };
@@ -198,7 +220,14 @@ function loadMp3LameEncoderInternal(scriptUrl: string): Promise<void> {
         });
       })
       .catch(error => {
-        reject(new Error(`Cannot access Mp3LameEncoder script at ${scriptUrl}: ${error.message}`));
+        const errorMsg = `Cannot access Mp3LameEncoder script at ${scriptUrl}: ${error.message}\n\n` +
+          `Troubleshooting:\n` +
+          `1. Open ${scriptUrl} in your browser to verify the file exists\n` +
+          `2. Check browser console for CORS errors\n` +
+          `3. Ensure your server is configured to serve files from node_modules or public folder\n` +
+          `4. See TROUBLESHOOTING_ENCODER.md for more help`;
+        console.error(errorMsg);
+        reject(new Error(errorMsg));
       });
   });
 }

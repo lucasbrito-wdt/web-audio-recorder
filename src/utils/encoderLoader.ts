@@ -42,12 +42,20 @@ export function getEncoderBaseUrl(): string {
         const parts = __dirname.split('node_modules/');
         if (parts.length > 1) {
           const packageName = parts[1].split('/')[0];
+          // Retornar caminho absoluto se possível
+          if (typeof window !== 'undefined') {
+            return `${window.location.origin}/node_modules/${packageName}/lib`;
+          }
           return `/node_modules/${packageName}/lib`;
         }
       }
       // If in dist, go to lib
       if (__dirname.includes('dist')) {
-        return __dirname.replace('dist', 'lib');
+        const libPath = __dirname.replace('dist', 'lib');
+        if (typeof window !== 'undefined') {
+          return `${window.location.origin}${libPath}`;
+        }
+        return libPath;
       }
     } catch (e) {
       // Fall through
@@ -78,6 +86,7 @@ export function getEncoderBaseUrl(): string {
         if (url.pathname.includes('node_modules')) {
           const packagePath = url.pathname.split('node_modules/')[1];
           const packageName = packagePath.split('/')[0];
+          // Retornar caminho absoluto para node_modules
           return `${url.origin}/node_modules/${packageName}/lib`;
         }
         // If from dist, go to lib
@@ -91,11 +100,10 @@ export function getEncoderBaseUrl(): string {
     }
   }
 
-  // Default fallback: try common paths
-  // In browser, try root first (for Vite public/), then node_modules, then lib
+  // Default fallback: try node_modules first, then root
   if (typeof window !== 'undefined') {
-    // For development with Vite, public/ is served at root
-    return '/';
+    // Priorizar node_modules
+    return '/node_modules/web-audio-recorder-ts/lib';
   }
   
   return '/lib';
@@ -159,22 +167,24 @@ export function configureEncoderPaths(baseUrl?: string): void {
  * Useful when auto-detection fails
  */
 export async function findEncoderPath(filename: string): Promise<string | null> {
+  // Priorizar caminhos do node_modules primeiro
   const possiblePaths = [
-    // For development/demo: try public folder first (Vite serves public/ at root)
+    // Primeiro: tentar node_modules (prioridade máxima)
+    `/node_modules/web-audio-recorder-ts/lib/${filename}`,
+    `./node_modules/web-audio-recorder-ts/lib/${filename}`,
+    `../node_modules/web-audio-recorder-ts/lib/${filename}`,
+    `../../node_modules/web-audio-recorder-ts/lib/${filename}`,
+    // From dist (se os arquivos foram copiados para dist/lib)
+    `/node_modules/web-audio-recorder-ts/dist/lib/${filename}`,
+    `./node_modules/web-audio-recorder-ts/dist/lib/${filename}`,
+    // Auto-detected path (pode apontar para node_modules)
+    getEncoderScriptUrl(filename),
+    // Para desenvolvimento/demo: try public folder (Vite serves public/ at root)
     `/${filename}`,
     // Direct lib paths (for development or custom setups)
     `/lib/${filename}`,
     `./lib/${filename}`,
     `../lib/${filename}`,
-    // Auto-detected path
-    getEncoderScriptUrl(filename),
-    // Common npm package paths (from node_modules) - only works if server is configured
-    `/node_modules/web-audio-recorder-ts/lib/${filename}`,
-    `./node_modules/web-audio-recorder-ts/lib/${filename}`,
-    `../node_modules/web-audio-recorder-ts/lib/${filename}`,
-    // From dist (if bundled)
-    `/node_modules/web-audio-recorder-ts/dist/lib/${filename}`,
-    `./node_modules/web-audio-recorder-ts/dist/lib/${filename}`,
     // CDN or absolute paths (if configured)
     filename.startsWith('http') ? filename : null
   ].filter((path): path is string => path !== null);
@@ -186,9 +196,24 @@ export async function findEncoderPath(filename: string): Promise<string | null> 
         ? path 
         : new URL(path, typeof window !== 'undefined' ? window.location.href : 'file://').href;
       
-      const response = await fetch(testUrl, { method: 'HEAD' });
+      // Usar GET para verificar se é JavaScript válido (não HTML)
+      const response = await fetch(testUrl, { method: 'GET', cache: 'no-cache' });
       if (response.ok) {
-        return path;
+        // Verificar se o conteúdo é JavaScript (não HTML)
+        const text = await response.text();
+        const trimmedText = text.trim();
+        
+        // Se começar com '<', é HTML (404, etc) - pular este caminho
+        if (trimmedText.startsWith('<')) {
+          console.warn(`Path ${path} returned HTML instead of JavaScript, skipping...`);
+          continue;
+        }
+        
+        // Se parece JavaScript, retornar este caminho
+        if (trimmedText.includes('function') || trimmedText.includes('var') || trimmedText.includes('const') || trimmedText.includes('let') || trimmedText.length > 100) {
+          console.log(`✅ Found encoder file at: ${path}`);
+          return path;
+        }
       }
     } catch (e) {
       // Continue to next path
