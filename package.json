@@ -36,7 +36,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/your-username/web-audio-recorder-ts.git"
+    "url": "https://github.com/lucasbrito-wdt/web-audio-recorder.git"
   },
   "devDependencies": {
     "@rollup/plugin-commonjs": "^28.0.1",
