@@ -1,0 +1,52 @@
+{
+  "name": "web-audio-recorder-ts",
+  "version": "1.0.0",
+  "description": "TypeScript port of web-audio-recorder-js with full type support for WAV, OGG Vorbis, and MP3 audio recording",
+  "main": "dist/index.cjs.js",
+  "module": "dist/index.esm.js",
+  "browser": "dist/index.umd.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "lib",
+    "types",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "rollup -c",
+    "dev": "rollup -c -w",
+    "demo": "vite",
+    "test-encoder": "vite demo/test-encoder.html",
+    "prepublishOnly": "pnpm build",
+    "prepack": "pnpm build"
+  },
+  "keywords": [
+    "web-audio",
+    "audio-recording",
+    "wav",
+    "ogg",
+    "vorbis",
+    "mp3",
+    "typescript",
+    "webaudio",
+    "recorder"
+  ],
+  "author": "",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/your-username/web-audio-recorder-ts.git"
+  },
+  "devDependencies": {
+    "@rollup/plugin-commonjs": "^28.0.1",
+    "@rollup/plugin-node-resolve": "^15.3.0",
+    "@rollup/plugin-typescript": "^12.1.1",
+    "@types/node": "^22.10.1",
+    "rollup": "^4.28.1",
+    "rollup-plugin-copy": "^3.5.0",
+    "tslib": "^2.8.1",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.3"
+  }
+}

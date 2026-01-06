@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Web Audio Recorder - Demo</title>
+  <link rel="stylesheet" href="demo.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>🎙️ Web Audio Recorder</h1>
+      <p>Grave áudio em WAV, OGG ou MP3 diretamente no navegador</p>
+    </header>
+
+    <main>
+      <div class="controls">
+        <div class="format-selector">
+          <label for="format">Formato:</label>
+          <select id="format" name="format">
+            <option value="wav">WAV</option>
+            <option value="ogg">OGG Vorbis</option>
+            <option value="mp3">MP3</option>
+          </select>
+        </div>
+
+        <div class="button-group">
+          <button id="startBtn" class="btn btn-primary">🎤 Iniciar Gravação</button>
+          <button id="stopBtn" class="btn btn-danger" disabled>⏹️ Parar</button>
+          <button id="cancelBtn" class="btn btn-secondary" disabled>❌ Cancelar</button>
+        </div>
+      </div>
+
+      <div class="status" id="status">
+        <span class="status-indicator" id="statusIndicator"></span>
+        <span id="statusText">Pronto para gravar</span>
+      </div>
+
+      <div class="audio-player" id="audioPlayer" style="display: none;">
+        <h3>Áudio Gravado:</h3>
+        <audio id="audioElement" controls></audio>
+        <div class="download-section">
+          <button id="downloadBtn" class="btn btn-success">⬇️ Download</button>
+        </div>
+      </div>
+
+      <div class="info">
+        <h3>Informações:</h3>
+        <ul>
+          <li>Taxa de amostragem: <span id="sampleRate">-</span> Hz</li>
+          <li>Canais: <span id="channels">-</span></li>
+          <li>Duração: <span id="duration">-</span> segundos</li>
+        </ul>
+      </div>
+    </main>
+  </div>
+
+  <!-- Carregar encoders Emscripten -->
+  <script>
+    // Configurar caminho dos arquivos .mem
+    (function() {
+      if (typeof window !== 'undefined') {
+        // O caminho deve ser relativo ao arquivo .js, que está na raiz
+        window.OggVorbisEncoderConfig = {
+          memoryInitializerPrefixURL: '/'
+        };
+        window.Mp3LameEncoderConfig = {
+          memoryInitializerPrefixURL: '/'
+        };
+      }
+    })();
+  </script>
+  <!-- Pré-carregar scripts dos encoders (opcional, serão carregados dinamicamente quando necessário) -->
+  <script type="module" src="demo.ts"></script>
+</body>
+</html>

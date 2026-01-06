@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Test Encoder Loading</title>
+</head>
+<body>
+  <h1>Test Encoder Loading</h1>
+  <button onclick="testLoad()">Test Load OggVorbisEncoder</button>
+  <div id="result"></div>
+  
+  <script>
+    async function testLoad() {
+      const result = document.getElementById('result');
+      result.innerHTML = 'Testing...';
+      
+      const paths = [
+        '/OggVorbisEncoder.min.js',
+        '/lib/OggVorbisEncoder.min.js',
+        '../lib/OggVorbisEncoder.min.js',
+        './lib/OggVorbisEncoder.min.js'
+      ];
+      
+      for (const path of paths) {
+        try {
+          const url = path.startsWith('http') ? path : new URL(path, window.location.href).href;
+          const response = await fetch(url, { method: 'HEAD' });
+          result.innerHTML += `<br>${path}: ${response.ok ? '✅ OK' : '❌ ' + response.status}`;
+          
+          if (response.ok) {
+            // Tentar carregar o script
+            const script = document.createElement('script');
+            script.src = path;
+            script.onload = () => {
+              if (typeof OggVorbisEncoder !== 'undefined') {
+                result.innerHTML += `<br>✅ Script loaded and OggVorbisEncoder is available!`;
+              } else {
+                result.innerHTML += `<br>⚠️ Script loaded but OggVorbisEncoder is undefined`;
+              }
+            };
+            script.onerror = () => {
+              result.innerHTML += `<br>❌ Script failed to load`;
+            };
+            document.head.appendChild(script);
+            break;
+          }
+        } catch (error) {
+          result.innerHTML += `<br>${path}: ❌ ${error.message}`;
+        }
+      }
+    }
+  </script>
+</body>
+</html>
