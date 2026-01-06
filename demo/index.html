@@ -58,9 +58,10 @@
   <!-- Carregar encoders Emscripten -->
   <script>
     // Configurar caminho dos arquivos .mem
+    // Para demo local, os arquivos estão na raiz (public/)
     (function() {
       if (typeof window !== 'undefined') {
-        // O caminho deve ser relativo ao arquivo .js, que está na raiz
+        // O caminho deve ser relativo ao arquivo .js, que está na raiz (public/)
         window.OggVorbisEncoderConfig = {
           memoryInitializerPrefixURL: '/'
         };

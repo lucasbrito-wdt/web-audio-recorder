@@ -5,6 +5,7 @@
  */
 
 import { AudioEncoder, OggVorbisOptions } from '../core/types';
+import { getEncoderScriptUrl, findEncoderPath, configureEncoderPaths } from '../utils/encoderLoader';
 /// <reference types="../../types/ogg-vorbis-encoder" />
 
 // Importar tipos globais
@@ -93,10 +94,36 @@ export class OggVorbisEncoderWrapper implements AudioEncoder {
 /**
  * Função helper para carregar o script OggVorbisEncoder
  * 
- * @param scriptUrl - URL do script OggVorbisEncoder.min.js
+ * @param scriptUrl - URL do script OggVorbisEncoder.min.js (opcional, tenta auto-detectar se não fornecido)
  * @returns Promise que resolve quando o script é carregado
  */
-export function loadOggVorbisEncoder(scriptUrl: string): Promise<void> {
+export async function loadOggVorbisEncoder(scriptUrl?: string): Promise<void> {
+  // Se não fornecido, tentar auto-detectar
+  if (!scriptUrl) {
+    // Configurar paths dos arquivos .mem
+    configureEncoderPaths();
+    
+    // Tentar encontrar o arquivo automaticamente
+    const foundPath = await findEncoderPath('OggVorbisEncoder.min.js');
+    if (!foundPath) {
+      throw new Error(
+        'Could not find OggVorbisEncoder.min.js. ' +
+        'Please provide the path manually or ensure the package is installed correctly.'
+      );
+    }
+    scriptUrl = foundPath;
+  } else {
+    // Se fornecido, ainda configurar paths dos .mem
+    configureEncoderPaths();
+  }
+
+  return loadOggVorbisEncoderInternal(scriptUrl);
+}
+
+/**
+ * Internal function to load the encoder script
+ */
+function loadOggVorbisEncoderInternal(scriptUrl: string): Promise<void> {
   return new Promise((resolve, reject) => {
     // Verificar se já está carregado
     if (typeof (window as any).OggVorbisEncoder !== 'undefined') {

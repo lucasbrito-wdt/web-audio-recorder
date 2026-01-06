@@ -1,6 +1,7 @@
 {
   "name": "web-audio-recorder-ts",
   "version": "1.0.0",
+  "type": "module",
   "description": "TypeScript port of web-audio-recorder-js with full type support for WAV, OGG Vorbis, and MP3 audio recording",
   "main": "dist/index.cjs.js",
   "module": "dist/index.esm.js",
@@ -19,7 +20,8 @@
     "demo": "vite",
     "test-encoder": "vite demo/test-encoder.html",
     "prepublishOnly": "pnpm build",
-    "prepack": "pnpm build"
+    "prepack": "pnpm build",
+    "publish:public": "npm publish --access public"
   },
   "keywords": [
     "web-audio",

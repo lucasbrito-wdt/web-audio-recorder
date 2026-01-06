@@ -91,37 +91,23 @@ async function createRecorder(): Promise<WebAudioRecorderWav | WebAudioRecorderO
       // Carregar encoder OGG se ainda não foi carregado
       if (!loadedEncoders.ogg) {
         updateStatus('processing', 'Carregando encoder OGG...');
-        // Tentar diferentes caminhos possíveis baseado na configuração do Vite
-        // Com publicDir: 'public', os arquivos são servidos na raiz
-        const baseUrl = window.location.origin;
-        const possiblePaths = [
-          '/OggVorbisEncoder.min.js',  // Raiz (publicDir)
-          '/lib/OggVorbisEncoder.min.js',  // Caminho explícito (caso não use publicDir)
-          `${baseUrl}/OggVorbisEncoder.min.js`  // Absoluto
-        ];
-        
-        let loaded = false;
-        let lastError: Error | null = null;
-        
-        for (const path of possiblePaths) {
+        // Para demo local, usar caminho direto da pasta public
+        // Em produção, a auto-detecção funcionará
+        const oggPath = '/OggVorbisEncoder.min.js';
+        try {
+          await loadOggVorbisEncoder(oggPath);
+          loadedEncoders.ogg = true;
+          console.log(`✅ OggVorbisEncoder loaded from: ${oggPath}`);
+        } catch (error) {
+          // Se falhar, tentar auto-detecção
+          console.warn('Direct path failed, trying auto-detection:', error);
           try {
-            console.log(`Tentando carregar OggVorbisEncoder de: ${path}`);
-            await loadOggVorbisEncoder(path);
+            await loadOggVorbisEncoder();
             loadedEncoders.ogg = true;
-            loaded = true;
-            console.log(`✅ OggVorbisEncoder loaded from: ${path}`);
-            break;
-          } catch (error) {
-            lastError = error as Error;
-            console.warn(`❌ Failed to load from ${path}:`, error);
-            // Continuar tentando próximo caminho
+            console.log('✅ OggVorbisEncoder loaded automatically');
+          } catch (e) {
+            throw new Error(`Failed to load OGG encoder: ${(e as Error).message}`);
           }
-        }
-        
-        if (!loaded) {
-          const errorMsg = `Falha ao carregar encoder OGG.\n\nTentou os seguintes caminhos:\n${possiblePaths.map(p => `  - ${p}`).join('\n')}\n\nÚltimo erro: ${lastError?.message}\n\nCertifique-se de que o arquivo OggVorbisEncoder.min.js está na pasta lib/ e que o Vite está configurado para servir arquivos públicos.`;
-          console.error(errorMsg);
-          throw new Error(errorMsg);
         }
       }
       return new WebAudioRecorderOgg(audioContext, options, { quality: 0.7 });
@@ -130,37 +116,23 @@ async function createRecorder(): Promise<WebAudioRecorderWav | WebAudioRecorderO
       // Carregar encoder MP3 se ainda não foi carregado
       if (!loadedEncoders.mp3) {
         updateStatus('processing', 'Carregando encoder MP3...');
-        // Tentar diferentes caminhos possíveis baseado na configuração do Vite
-        // Com publicDir: 'public', os arquivos são servidos na raiz
-        const baseUrl = window.location.origin;
-        const possiblePaths = [
-          '/Mp3LameEncoder.min.js',  // Raiz (publicDir)
-          '/lib/Mp3LameEncoder.min.js',  // Caminho explícito (caso não use publicDir)
-          `${baseUrl}/Mp3LameEncoder.min.js`  // Absoluto
-        ];
-        
-        let loaded = false;
-        let lastError: Error | null = null;
-        
-        for (const path of possiblePaths) {
+        // Para demo local, usar caminho direto da pasta public
+        // Em produção, a auto-detecção funcionará
+        const mp3Path = '/Mp3LameEncoder.min.js';
+        try {
+          await loadMp3LameEncoder(mp3Path);
+          loadedEncoders.mp3 = true;
+          console.log(`✅ Mp3LameEncoder loaded from: ${mp3Path}`);
+        } catch (error) {
+          // Se falhar, tentar auto-detecção
+          console.warn('Direct path failed, trying auto-detection:', error);
           try {
-            console.log(`Tentando carregar Mp3LameEncoder de: ${path}`);
-            await loadMp3LameEncoder(path);
+            await loadMp3LameEncoder();
             loadedEncoders.mp3 = true;
-            loaded = true;
-            console.log(`✅ Mp3LameEncoder loaded from: ${path}`);
-            break;
-          } catch (error) {
-            lastError = error as Error;
-            console.warn(`❌ Failed to load from ${path}:`, error);
-            // Continuar tentando próximo caminho
+            console.log('✅ Mp3LameEncoder loaded automatically');
+          } catch (e) {
+            throw new Error(`Failed to load MP3 encoder: ${(e as Error).message}`);
           }
-        }
-        
-        if (!loaded) {
-          const errorMsg = `Falha ao carregar encoder MP3.\n\nTentou os seguintes caminhos:\n${possiblePaths.map(p => `  - ${p}`).join('\n')}\n\nÚltimo erro: ${lastError?.message}\n\nCertifique-se de que o arquivo Mp3LameEncoder.min.js está na pasta lib/ e que o Vite está configurado para servir arquivos públicos.`;
-          console.error(errorMsg);
-          throw new Error(errorMsg);
         }
       }
       return new WebAudioRecorderMp3(audioContext, options, { bitrate: 192 });

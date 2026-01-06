@@ -5,6 +5,7 @@
  */
 
 import { AudioEncoder, Mp3Options } from '../core/types';
+import { getEncoderScriptUrl, findEncoderPath, configureEncoderPaths } from '../utils/encoderLoader';
 /// <reference types="../../types/mp3-lame-encoder" />
 
 // Importar tipos globais
@@ -93,10 +94,36 @@ export class Mp3LameEncoderWrapper implements AudioEncoder {
 /**
  * Função helper para carregar o script Mp3LameEncoder
  * 
- * @param scriptUrl - URL do script Mp3LameEncoder.min.js
+ * @param scriptUrl - URL do script Mp3LameEncoder.min.js (opcional, tenta auto-detectar se não fornecido)
  * @returns Promise que resolve quando o script é carregado
  */
-export function loadMp3LameEncoder(scriptUrl: string): Promise<void> {
+export async function loadMp3LameEncoder(scriptUrl?: string): Promise<void> {
+  // Se não fornecido, tentar auto-detectar
+  if (!scriptUrl) {
+    // Configurar paths dos arquivos .mem
+    configureEncoderPaths();
+    
+    // Tentar encontrar o arquivo automaticamente
+    const foundPath = await findEncoderPath('Mp3LameEncoder.min.js');
+    if (!foundPath) {
+      throw new Error(
+        'Could not find Mp3LameEncoder.min.js. ' +
+        'Please provide the path manually or ensure the package is installed correctly.'
+      );
+    }
+    scriptUrl = foundPath;
+  } else {
+    // Se fornecido, ainda configurar paths dos .mem
+    configureEncoderPaths();
+  }
+
+  return loadMp3LameEncoderInternal(scriptUrl);
+}
+
+/**
+ * Internal function to load the encoder script
+ */
+function loadMp3LameEncoderInternal(scriptUrl: string): Promise<void> {
   return new Promise((resolve, reject) => {
     // Verificar se já está carregado
     if (typeof (window as any).Mp3LameEncoder !== 'undefined') {

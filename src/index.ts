@@ -16,6 +16,14 @@ export { WavAudioEncoder } from './encoders/WavAudioEncoder';
 export { OggVorbisEncoderWrapper, loadOggVorbisEncoder } from './encoders/OggVorbisEncoder';
 export { Mp3LameEncoderWrapper, loadMp3LameEncoder } from './encoders/Mp3LameEncoder';
 
+// Utils
+export {
+  getEncoderBaseUrl,
+  getEncoderScriptUrl,
+  configureEncoderPaths,
+  findEncoderPath
+} from './utils/encoderLoader';
+
 // Recorders
 export { WebAudioRecorderWav } from './recorders/WebAudioRecorderWav';
 export { WebAudioRecorderOgg } from './recorders/WebAudioRecorderOgg';

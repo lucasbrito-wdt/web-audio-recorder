@@ -194,15 +194,28 @@ enum RecorderStatus {
 
 ## Setup for OGG and MP3
 
-OGG and MP3 encoders require external JavaScript files compiled via Emscripten. You need to:
+OGG and MP3 encoders require external JavaScript files compiled via Emscripten. The good news is that **you don't need to copy any files manually** - the library will automatically detect and load them from the npm package!
 
-1. Copy the encoder files to your project:
-   - `OggVorbisEncoder.min.js` and `OggVorbisEncoder.min.js.mem`
-   - `Mp3LameEncoder.min.js` and `Mp3LameEncoder.min.js.mem`
+### Automatic Loading (Recommended)
 
-2. These files are included in the `lib/` directory of this package.
+Simply call the loader functions without any parameters, and the library will automatically find the encoder files:
 
-3. Load the encoder scripts before creating recorders:
+```typescript
+// For OGG - automatically finds the file in node_modules
+await loadOggVorbisEncoder();
+
+// For MP3 - automatically finds the file in node_modules
+await loadMp3LameEncoder();
+```
+
+The library will:
+1. Automatically detect the package location in `node_modules`
+2. Configure the memory initializer paths for `.mem` files
+3. Load the encoder scripts from the correct location
+
+### Manual Path (If Needed)
+
+If automatic detection fails (e.g., custom build setup), you can still provide the path manually:
 
 ```typescript
 // For OGG
@@ -212,19 +225,35 @@ await loadOggVorbisEncoder('/path/to/OggVorbisEncoder.min.js');
 await loadMp3LameEncoder('/path/to/Mp3LameEncoder.min.js');
 ```
 
-4. Configure memory initializer path if needed:
+### Advanced Configuration
+
+If you need more control, you can use the utility functions:
 
 ```typescript
-// For OGG
-window.OggVorbisEncoderConfig = {
-  memoryInitializerPrefixURL: '/path/to/'
-};
+import { 
+  configureEncoderPaths, 
+  getEncoderBaseUrl,
+  findEncoderPath 
+} from 'web-audio-recorder-ts';
 
-// For MP3
-window.Mp3LameEncoderConfig = {
-  memoryInitializerPrefixURL: '/path/to/'
-};
+// Configure paths manually
+configureEncoderPaths('/custom/path/to/lib');
+
+// Get the detected base URL
+const baseUrl = getEncoderBaseUrl();
+
+// Find encoder file path
+const oggPath = await findEncoderPath('OggVorbisEncoder.min.js');
 ```
+
+### File Locations
+
+The encoder files are included in the `lib/` directory of the npm package:
+- `OggVorbisEncoder.min.js` and `OggVorbisEncoder.min.js.mem`
+- `Mp3LameEncoder.min.js` and `Mp3LameEncoder.min.js.mem`
+
+When installed via npm, they will be at:
+- `node_modules/web-audio-recorder-ts/lib/`
 
 ## Browser Support
 
