@@ -76,3 +76,5 @@ pnpm-lock.yaml
 
 # Documentação de publicação
 PUBLISH.md
+SETUP_2FA.md
+SETUP_TOKEN.md

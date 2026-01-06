@@ -30,13 +30,23 @@
     "mp3",
     "typescript",
     "webaudio",
-    "recorder"
+    "recorder",
+    "browser",
+    "microphone",
+    "audio-encoder"
   ],
-  "author": "",
+  "author": "luquinhasbrito",
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/lucasbrito-wdt/web-audio-recorder.git"
+  },
+  "bugs": {
+    "url": "https://github.com/lucasbrito-wdt/web-audio-recorder/issues"
+  },
+  "homepage": "https://github.com/lucasbrito-wdt/web-audio-recorder#readme",
+  "engines": {
+    "node": ">=14.0.0"
   },
   "devDependencies": {
     "@rollup/plugin-commonjs": "^28.0.1",
