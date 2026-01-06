@@ -155,38 +155,47 @@ function loadMp3LameEncoderInternal(scriptUrl: string): Promise<void> {
       return;
     }
 
-    // Primeiro, verificar se o arquivo existe fazendo uma requisição HEAD
-    fetch(scriptUrl, { method: 'HEAD', cache: 'no-cache' })
+    // Verificar se o arquivo existe e é JavaScript válido
+    fetch(scriptUrl, { method: 'GET', cache: 'no-cache' })
       .then(response => {
         if (!response.ok) {
-          throw new Error(`File not found: ${scriptUrl} (${response.status})`);
+          throw new Error(`File not found: ${scriptUrl} (${response.status} ${response.statusText})`);
         }
         
-        // Criar e carregar novo script
-        const script = document.createElement('script');
-        script.src = scriptUrl;
-        script.async = false; // Carregar de forma síncrona para garantir ordem
-        script.type = 'text/javascript';
-        
-        script.onload = () => {
-          // Aguardar um pouco para garantir que o objeto global foi criado
-          setTimeout(() => {
-            if (typeof (window as any).Mp3LameEncoder !== 'undefined') {
-              resolve();
-            } else {
-              reject(new Error('Mp3LameEncoder object not found after script load. The script may not have exported the global correctly.'));
-            }
-          }, 200);
-        };
-        
-        script.onerror = (event) => {
-          const error = new Error(`Failed to load Mp3LameEncoder script from ${scriptUrl}. Check browser console for CORS or network errors.`);
-          console.error('Script load error:', event);
-          console.error('Script URL:', scriptUrl);
-          reject(error);
-        };
-        
-        document.head.appendChild(script);
+        // Verificar se o conteúdo é JavaScript (não HTML)
+        return response.text().then(text => {
+          // Se começar com '<', provavelmente é HTML (erro 404, etc)
+          if (text.trim().startsWith('<')) {
+            throw new Error(`Invalid response from ${scriptUrl}. Expected JavaScript but received HTML. This usually means the file was not found (404).`);
+          }
+          
+          // Criar e carregar novo script
+          const script = document.createElement('script');
+          script.src = scriptUrl;
+          script.async = false; // Carregar de forma síncrona para garantir ordem
+          script.type = 'text/javascript';
+          
+          script.onload = () => {
+            // Aguardar um pouco para garantir que o objeto global foi criado
+            setTimeout(() => {
+              if (typeof (window as any).Mp3LameEncoder !== 'undefined') {
+                resolve();
+              } else {
+                reject(new Error('Mp3LameEncoder object not found after script load. The script may not have exported the global correctly.'));
+              }
+            }, 200);
+          };
+          
+          script.onerror = (event) => {
+            const error = new Error(`Failed to load Mp3LameEncoder script from ${scriptUrl}. Check browser console for CORS or network errors. Make sure the file exists and is accessible.`);
+            console.error('Script load error:', event);
+            console.error('Script URL:', scriptUrl);
+            console.error('Try accessing the URL directly in your browser to verify it exists.');
+            reject(error);
+          };
+          
+          document.head.appendChild(script);
+        });
       })
       .catch(error => {
         reject(new Error(`Cannot access Mp3LameEncoder script at ${scriptUrl}: ${error.message}`));
