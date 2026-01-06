@@ -9,19 +9,19 @@ export default {
     {
       file: 'dist/index.cjs.js',
       format: 'cjs',
-      sourcemap: true,
+      sourcemap: false, // Disable source maps to prevent Nuxt from accessing source files
       exports: 'named'
     },
     {
       file: 'dist/index.esm.js',
       format: 'es',
-      sourcemap: true
+      sourcemap: false // Disable source maps to prevent Nuxt from accessing source files
     },
     {
       file: 'dist/index.umd.js',
       format: 'umd',
       name: 'WebAudioRecorder',
-      sourcemap: true
+      sourcemap: false // Disable source maps to prevent Nuxt from accessing source files
     }
   ],
   plugins: [
@@ -34,7 +34,9 @@ export default {
       tsconfig: './tsconfig.json',
       declaration: true,
       declarationDir: './dist',
-      rootDir: './src'
+      rootDir: './src',
+      sourceMap: false, // Disable source maps to prevent Nuxt from accessing source files
+      declarationMap: false // Disable declaration maps
     }),
     copy({
       targets: [
