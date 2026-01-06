@@ -1,15 +1,22 @@
 # web-audio-recorder-ts
 
+[![npm version](https://img.shields.io/npm/v/web-audio-recorder-ts.svg)](https://www.npmjs.com/package/web-audio-recorder-ts)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 TypeScript port of [web-audio-recorder-js](https://github.com/higuma/web-audio-recorder-js) with full type support for WAV, OGG Vorbis, and MP3 audio recording in browsers.
+
+**✨ No manual file copying required!** The library automatically detects and loads encoder files from the npm package.
 
 ## Features
 
-- ✅ Full TypeScript support with type definitions
-- ✅ Record audio in WAV, OGG Vorbis, and MP3 formats
-- ✅ Modern ES modules, CommonJS, and UMD builds
-- ✅ Zero runtime dependencies
-- ✅ Works in browsers and Web Workers
-- ✅ Type-safe API with IntelliSense support
+- ✅ **Full TypeScript support** with complete type definitions
+- ✅ **Record audio in WAV, OGG Vorbis, and MP3 formats**
+- ✅ **Automatic encoder file detection** - no manual file copying needed!
+- ✅ **Modern build system** - ES modules, CommonJS, and UMD outputs
+- ✅ **Zero runtime dependencies** - pure TypeScript/JavaScript
+- ✅ **Works in browsers and Web Workers**
+- ✅ **Type-safe API** with full IntelliSense support
+- ✅ **Production ready** - tested and published on npm
 
 ## Installation
 
@@ -60,15 +67,8 @@ const blob = await recorder.stop();
 ```typescript
 import { WebAudioRecorderOgg, loadOggVorbisEncoder } from 'web-audio-recorder-ts';
 
-// Load encoder script first
-await loadOggVorbisEncoder('/path/to/OggVorbisEncoder.min.js');
-
-// Configure memory initializer path (if needed)
-if (typeof window !== 'undefined') {
-  (window as any).OggVorbisEncoderConfig = {
-    memoryInitializerPrefixURL: '/path/to/'
-  };
-}
+// Load encoder script (auto-detects from node_modules - no path needed!)
+await loadOggVorbisEncoder();
 
 const audioContext = new AudioContext();
 const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -79,6 +79,10 @@ const recorder = new WebAudioRecorderOgg(
   { quality: 0.7 } // OGG quality: -0.1 to 1.0
 );
 
+recorder.setOnComplete((event) => {
+  console.log('OGG recording complete!', event.url);
+});
+
 await recorder.start(stream);
 const blob = await recorder.stop();
 ```
@@ -88,15 +92,8 @@ const blob = await recorder.stop();
 ```typescript
 import { WebAudioRecorderMp3, loadMp3LameEncoder } from 'web-audio-recorder-ts';
 
-// Load encoder script first
-await loadMp3LameEncoder('/path/to/Mp3LameEncoder.min.js');
-
-// Configure memory initializer path (if needed)
-if (typeof window !== 'undefined') {
-  (window as any).Mp3LameEncoderConfig = {
-    memoryInitializerPrefixURL: '/path/to/'
-  };
-}
+// Load encoder script (auto-detects from node_modules - no path needed!)
+await loadMp3LameEncoder();
 
 const audioContext = new AudioContext();
 const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -106,6 +103,10 @@ const recorder = new WebAudioRecorderMp3(
   {},
   { bitrate: 192 } // MP3 bitrate in kbps
 );
+
+recorder.setOnComplete((event) => {
+  console.log('MP3 recording complete!', event.url);
+});
 
 await recorder.start(stream);
 const blob = await recorder.stop();
@@ -209,6 +210,7 @@ await loadMp3LameEncoder();
 ```
 
 The library will:
+
 1. Automatically detect the package location in `node_modules`
 2. Configure the memory initializer paths for `.mem` files
 3. Load the encoder scripts from the correct location
@@ -249,18 +251,86 @@ const oggPath = await findEncoderPath('OggVorbisEncoder.min.js');
 ### File Locations
 
 The encoder files are included in the `lib/` directory of the npm package:
+
 - `OggVorbisEncoder.min.js` and `OggVorbisEncoder.min.js.mem`
 - `Mp3LameEncoder.min.js` and `Mp3LameEncoder.min.js.mem`
 
 When installed via npm, they will be at:
+
 - `node_modules/web-audio-recorder-ts/lib/`
+
+## Framework Support
+
+### Nuxt.js
+
+If you're using Nuxt and seeing errors about TypeScript source files, see [NUXT_USAGE.md](./NUXT_USAGE.md) for detailed instructions.
+
+Quick fix - add to `nuxt.config.ts`:
+
+```typescript
+export default defineNuxtConfig({
+  vite: {
+    optimizeDeps: {
+      exclude: ['web-audio-recorder-ts']
+    }
+  }
+})
+```
+
+### Vite / Vue
+
+Works out of the box! Just import and use.
+
+### Next.js
+
+Should work with default configuration. For OGG/MP3, ensure encoder files are accessible.
 
 ## Browser Support
 
-- Chrome/Edge: Full support
-- Firefox: Full support
-- Safari: Full support (may require user gesture for audio context)
-- Opera: Full support
+- ✅ Chrome/Edge: Full support
+- ✅ Firefox: Full support
+- ✅ Safari: Full support (may require user gesture for audio context)
+- ✅ Opera: Full support
+
+### Requirements
+
+- Modern browser with Web Audio API support
+- `getUserMedia` API for microphone access
+- For OGG/MP3: Server must be able to serve files from `node_modules` (or use manual paths)
+
+## Troubleshooting
+
+### Encoder files not found
+
+If automatic detection fails, you can:
+
+1. **Check if files exist**: Verify that `node_modules/web-audio-recorder-ts/lib/` contains the encoder files
+2. **Use manual paths**: Provide the path explicitly:
+
+   ```typescript
+   await loadOggVorbisEncoder('/path/to/OggVorbisEncoder.min.js');
+   ```
+
+3. **Check server configuration**: Ensure your dev server can serve files from `node_modules` (Vite, Webpack, etc.)
+
+### Memory initializer errors
+
+If you see errors about `.mem` files:
+
+1. The library automatically configures paths, but if needed:
+
+   ```typescript
+   import { configureEncoderPaths } from 'web-audio-recorder-ts';
+   configureEncoderPaths('/path/to/lib/');
+   ```
+
+### CORS errors
+
+If you see CORS errors when loading encoder files:
+
+- Ensure your server allows loading from `node_modules`
+- Consider copying files to `public/` folder in development
+- Use a CDN or absolute URLs in production
 
 ## License
 
@@ -273,18 +343,111 @@ See LICENSE file for details.
 ## Credits
 
 This is a TypeScript port of:
+
 - [web-audio-recorder-js](https://github.com/higuma/web-audio-recorder-js) by higuma
 - [ogg-vorbis-encoder-js](https://github.com/higuma/ogg-vorbis-encoder-js) by higuma
+
+## Development
+
+### Building
+
+```bash
+# Install dependencies
+pnpm install
+
+# Build the library
+pnpm build
+
+# Watch mode for development
+pnpm dev
+
+# Run demo
+pnpm demo
+```
+
+### Project Structure
+
+```
+web-audio-recorder-ts/
+├── src/
+│   ├── core/           # Core recorder classes and types
+│   ├── encoders/       # Audio encoders (WAV, OGG, MP3)
+│   ├── recorders/      # Format-specific recorders
+│   └── utils/          # Utility functions (auto-detection, etc.)
+├── lib/                # Emscripten encoder files
+├── types/              # TypeScript declarations for Emscripten
+├── demo/               # Demo application
+└── dist/               # Build output
+```
 
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
 
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add some amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+## Examples
+
+### Complete Example with Error Handling
+
+```typescript
+import { WebAudioRecorderWav } from 'web-audio-recorder-ts';
+
+async function recordAudio() {
+  try {
+    const audioContext = new AudioContext();
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    
+    const recorder = new WebAudioRecorderWav(audioContext, {
+      onDataAvailable: (event) => {
+        console.log('Data available:', event.data.length, 'bytes');
+      },
+      onComplete: (event) => {
+        console.log('Recording complete!');
+        // Download the file
+        const a = document.createElement('a');
+        a.href = event.url;
+        a.download = 'recording.wav';
+        a.click();
+      },
+      onError: (event) => {
+        console.error('Recording error:', event.message);
+      }
+    });
+    
+    await recorder.start(stream);
+    
+    // Record for 5 seconds
+    setTimeout(async () => {
+      const blob = await recorder.stop();
+      console.log('Blob size:', blob.size, 'bytes');
+      recorder.cleanup();
+    }, 5000);
+    
+  } catch (error) {
+    console.error('Failed to start recording:', error);
+  }
+}
+```
+
+## Repository
+
+- **GitHub**: [https://github.com/lucasbrito-wdt/web-audio-recorder](https://github.com/lucasbrito-wdt/web-audio-recorder)
+- **npm**: [https://www.npmjs.com/package/web-audio-recorder-ts](https://www.npmjs.com/package/web-audio-recorder-ts)
+- **Issues**: [https://github.com/lucasbrito-wdt/web-audio-recorder/issues](https://github.com/lucasbrito-wdt/web-audio-recorder/issues)
+
 ## Changelog
 
-### 1.0.0
+### 1.0.0 (2026-01-06)
 
-- Initial TypeScript port
-- Full type definitions
-- Support for WAV, OGG, and MP3 formats
-- Modern build system with ESM, CJS, and UMD outputs
+- ✨ **Initial TypeScript port** - Complete conversion from JavaScript
+- ✨ **Automatic encoder file detection** - No manual file copying required
+- ✨ **Full type definitions** - Complete TypeScript support with IntelliSense
+- ✨ **Support for WAV, OGG, and MP3 formats** - All three formats working
+- ✨ **Modern build system** - ESM, CJS, and UMD outputs
+- ✨ **Zero configuration** - Works out of the box with auto-detection
+- 📦 **Published on npm** - Ready for production use

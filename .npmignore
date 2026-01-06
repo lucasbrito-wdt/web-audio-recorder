@@ -9,3 +9,8 @@ node_modules/
 tsconfig.json
 rollup.config.js
 *.tsbuildinfo
+vite.config.ts
+public/
+.gitignore
+PUBLISH*.md
+SETUP*.md
