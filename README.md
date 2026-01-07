@@ -84,8 +84,16 @@ recorder.setOnComplete((event) => {
 });
 
 await recorder.start(stream);
-const blob = await recorder.stop();
+
+// ⚠️ IMPORTANT: OGG and MP3 require at least 0.5 seconds of audio data
+// Recording for less than 0.5s will cause an error
+setTimeout(async () => {
+  const blob = await recorder.stop();
+  // Recording complete!
+}, 500); // Minimum 500ms
 ```
+
+> **⚠️ Important**: OGG Vorbis and MP3 encoders require **at least 0.5 seconds** of audio data to create a valid file. Recording for less than 0.5 seconds will throw an error: `"Insufficient audio data for encoding"`. See [MINIMUM_RECORDING_DURATION.md](./MINIMUM_RECORDING_DURATION.md) for details.
 
 ### MP3 Recording
 

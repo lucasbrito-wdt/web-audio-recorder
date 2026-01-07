@@ -27,6 +27,8 @@ export class Mp3LameEncoderWrapper implements AudioEncoder {
   private sampleRate: number;
   private numChannels: number;
   private bitrate: number;
+  private bufferCount: number = 0;
+  private totalSamples: number = 0;
 
   /**
    * Cria uma instância do encoder MP3 LAME
@@ -36,17 +38,46 @@ export class Mp3LameEncoderWrapper implements AudioEncoder {
    * @param options - Opções do encoder MP3
    */
   constructor(sampleRate: number, numChannels: number, options: Mp3Options = {}) {
+    // Validar parâmetros
+    if (!Number.isFinite(sampleRate) || sampleRate <= 0) {
+      throw new Error(`Invalid sampleRate: ${sampleRate}. Must be a positive number.`);
+    }
+    
+    if (!Number.isInteger(numChannels) || numChannels < 1 || numChannels > 2) {
+      throw new Error(`Invalid numChannels: ${numChannels}. Must be 1 (mono) or 2 (stereo).`);
+    }
+
     this.sampleRate = sampleRate;
     this.numChannels = numChannels;
-    this.bitrate = options.bitrate ?? 128;
+    
+    // Validar e limitar bitrate (32 a 320 kbps para MP3)
+    const rawBitrate = options.bitrate ?? 128;
+    if (!Number.isFinite(rawBitrate) || !Number.isInteger(rawBitrate)) {
+      console.warn(`Invalid bitrate value: ${rawBitrate}. Using default 128`);
+      this.bitrate = 128;
+    } else {
+      // Clamp bitrate to valid range
+      this.bitrate = Math.max(32, Math.min(320, rawBitrate));
+      if (rawBitrate !== this.bitrate) {
+        console.warn(`Bitrate value ${rawBitrate} clamped to valid range: ${this.bitrate}`);
+      }
+    }
 
     // Verificar se Mp3LameEncoder está disponível
     if (typeof Mp3LameEncoder === 'undefined') {
       throw new Error('Mp3LameEncoder is not loaded. Make sure to load Mp3LameEncoder.min.js before using this encoder.');
     }
 
-    // Criar instância do encoder
-    this.encoder = new Mp3LameEncoder(sampleRate, numChannels, this.bitrate);
+    try {
+      // Criar instância do encoder
+      this.encoder = new Mp3LameEncoder(sampleRate, numChannels, this.bitrate);
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      throw new Error(
+        `Failed to initialize MP3 encoder: ${errorMsg}. ` +
+        `Parameters: sampleRate=${sampleRate}, numChannels=${numChannels}, bitrate=${this.bitrate}`
+      );
+    }
   }
 
   /**
@@ -59,11 +90,103 @@ export class Mp3LameEncoderWrapper implements AudioEncoder {
       throw new Error('Encoder is not initialized');
     }
 
+    // Converter canais se necessário ANTES de validar
+    // Isso permite que streams mono funcionem com encoders estéreo e vice-versa
+    let processedBuffers = buffers;
+    
     if (buffers.length !== this.numChannels) {
-      throw new Error(`Expected ${this.numChannels} channels, got ${buffers.length}`);
+      // Ajustar número de canais para corresponder ao esperado pelo encoder
+      if (buffers.length === 1 && this.numChannels === 2) {
+        // Mono -> Estéreo: duplicar o canal
+        processedBuffers = [
+          new Float32Array(buffers[0]),
+          new Float32Array(buffers[0])
+        ];
+      } else if (buffers.length === 2 && this.numChannels === 1) {
+        // Estéreo -> Mono: usar apenas o primeiro canal
+        processedBuffers = [new Float32Array(buffers[0])];
+      } else if (buffers.length < this.numChannels) {
+        // Menos canais: duplicar o último canal
+        processedBuffers = [...buffers];
+        while (processedBuffers.length < this.numChannels && processedBuffers.length > 0) {
+          processedBuffers.push(new Float32Array(processedBuffers[processedBuffers.length - 1]));
+        }
+      } else if (buffers.length > this.numChannels) {
+        // Mais canais: usar apenas os primeiros
+        processedBuffers = buffers.slice(0, this.numChannels);
+      }
+    }
+    
+    // Validação final
+    if (processedBuffers.length !== this.numChannels) {
+      throw new Error(
+        `Failed to adjust channels: Expected ${this.numChannels} channels, ` +
+        `got ${processedBuffers.length} after conversion from ${buffers.length} channels`
+      );
     }
 
-    this.encoder.encode(buffers);
+    // Validar que todos os buffers têm o mesmo tamanho
+    if (processedBuffers.length > 0) {
+      const expectedLength = processedBuffers[0].length;
+      for (let i = 1; i < processedBuffers.length; i++) {
+        if (processedBuffers[i].length !== expectedLength) {
+          throw new Error(`Channel ${i} has length ${processedBuffers[i].length}, expected ${expectedLength}`);
+        }
+      }
+
+      // Validar que há dados para processar
+      if (expectedLength === 0) {
+        // Buffer vazio, não há nada para codificar
+        return;
+      }
+    } else {
+      // Nenhum buffer fornecido
+      return;
+    }
+
+    // Criar cópias dos buffers e validar valores (NaN, Infinity)
+    const safeBuffers: Float32Array[] = processedBuffers.map((buffer, channelIndex) => {
+      const safeBuffer = new Float32Array(buffer.length);
+      let hasInvalidValues = false;
+      
+      for (let i = 0; i < buffer.length; i++) {
+        const value = buffer[i];
+        
+        // Verificar NaN e Infinity
+        if (!Number.isFinite(value)) {
+          hasInvalidValues = true;
+          // Substituir valores inválidos por 0
+          safeBuffer[i] = 0;
+        } else {
+          // Clamp valores para o range válido de áudio (-1.0 a 1.0)
+          safeBuffer[i] = Math.max(-1.0, Math.min(1.0, value));
+        }
+      }
+      
+      if (hasInvalidValues) {
+        console.warn(
+          `MP3 Encoder: Found invalid values (NaN/Infinity) in channel ${channelIndex}. ` +
+          `Replaced with 0. Buffer length: ${buffer.length}`
+        );
+      }
+      
+      return safeBuffer;
+    });
+
+    try {
+      this.encoder.encode(safeBuffers);
+      // Contar buffers processados para garantir que há dados antes de finalizar
+      this.bufferCount++;
+      this.totalSamples += safeBuffers[0].length;
+    } catch (error) {
+      // Melhorar mensagem de erro para incluir informações de debug
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      throw new Error(
+        `MP3 encoding error: ${errorMsg}. ` +
+        `Buffers: ${buffers.length} channels, lengths: ${buffers.map(b => b.length).join(', ')}, ` +
+        `Total buffers processed: ${this.bufferCount}, Total samples: ${this.totalSamples}`
+      );
+    }
   }
 
   /**
@@ -77,7 +200,29 @@ export class Mp3LameEncoderWrapper implements AudioEncoder {
       throw new Error('Encoder is not initialized');
     }
 
-    return this.encoder.finish(mimeType);
+    // Verificar se há dados processados
+    if (this.bufferCount === 0) {
+      console.warn('MP3 Encoder: finish() called but no buffers were encoded. This may cause issues with the Emscripten encoder.');
+      // Ainda tentar finalizar, mas avisar
+    }
+
+    try {
+      const blob = this.encoder.finish(mimeType);
+      
+      // Validar que o blob não está vazio
+      if (blob.size === 0) {
+        console.warn('MP3 Encoder: finish() returned empty blob. This may indicate insufficient audio data was encoded.');
+      }
+      
+      return blob;
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      throw new Error(
+        `MP3 finish() error: ${errorMsg}. ` +
+        `Buffers processed: ${this.bufferCount}, Total samples: ${this.totalSamples}, ` +
+        `Sample rate: ${this.sampleRate}, Channels: ${this.numChannels}, Bitrate: ${this.bitrate}`
+      );
+    }
   }
 
   /**
@@ -88,6 +233,9 @@ export class Mp3LameEncoderWrapper implements AudioEncoder {
       this.encoder.cancel();
       this.encoder = null;
     }
+    // Reset contadores
+    this.bufferCount = 0;
+    this.totalSamples = 0;
   }
 }
 
@@ -98,24 +246,29 @@ export class Mp3LameEncoderWrapper implements AudioEncoder {
  * @returns Promise que resolve quando o script é carregado
  */
 export async function loadMp3LameEncoder(scriptUrl?: string): Promise<void> {
-  // Se não fornecido, tentar auto-detectar
+  // Se URL não fornecida, tentar encontrar no padrão /encoders
   if (!scriptUrl) {
-    // Configurar paths dos arquivos .mem
-    configureEncoderPaths();
-    
-    // Tentar encontrar o arquivo automaticamente
     const foundPath = await findEncoderPath('Mp3LameEncoder.min.js');
     if (!foundPath) {
-      throw new Error(
-        'Could not find Mp3LameEncoder.min.js. ' +
-        'Please provide the path manually or ensure the package is installed correctly.'
+       throw new Error(
+        'Could not find Mp3LameEncoder.min.js in public/encoders/ folder.\n' +
+        'Please copy lib/*.js files to your public/encoders/ directory.'
       );
     }
     scriptUrl = foundPath;
-  } else {
-    // Se fornecido, ainda configurar paths dos .mem
-    configureEncoderPaths();
   }
+
+  // Extrair diretório base da URL para configurar carregamento do .mem
+  let baseUrl = '';
+  const lastSlash = scriptUrl.lastIndexOf('/');
+  if (lastSlash !== -1) {
+    baseUrl = scriptUrl.substring(0, lastSlash);
+  } else {
+    baseUrl = 'encoders';
+  }
+  
+  // Configurar encoder (isso define Mp3LameEncoderConfig global)
+  configureEncoderPaths(baseUrl);
 
   return loadMp3LameEncoderInternal(scriptUrl);
 }

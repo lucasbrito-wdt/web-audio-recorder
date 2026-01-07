@@ -91,23 +91,15 @@ async function createRecorder(): Promise<WebAudioRecorderWav | WebAudioRecorderO
       // Carregar encoder OGG se ainda não foi carregado
       if (!loadedEncoders.ogg) {
         updateStatus('processing', 'Carregando encoder OGG...');
-        // Para demo local, usar caminho direto da pasta public
-        // Em produção, a auto-detecção funcionará
-        const oggPath = '/OggVorbisEncoder.min.js';
         try {
-          await loadOggVorbisEncoder(oggPath);
+          // Carrega automaticamente de /encoders/OggVorbisEncoder.min.js
+          await loadOggVorbisEncoder();
           loadedEncoders.ogg = true;
-          console.log(`✅ OggVorbisEncoder loaded from: ${oggPath}`);
-        } catch (error) {
-          // Se falhar, tentar auto-detecção
-          console.warn('Direct path failed, trying auto-detection:', error);
-          try {
-            await loadOggVorbisEncoder();
-            loadedEncoders.ogg = true;
-            console.log('✅ OggVorbisEncoder loaded automatically');
-          } catch (e) {
-            throw new Error(`Failed to load OGG encoder: ${(e as Error).message}`);
-          }
+          console.log(`✅ OggVorbisEncoder loaded`);
+        } catch (e: any) {
+          console.error('Failed to load OGG encoder:', e);
+          updateStatus('error', 'Erro ao carregar encoder OGG: ' + e.message);
+          throw e;
         }
       }
       return new WebAudioRecorderOgg(audioContext, options, { quality: 0.7 });
@@ -116,23 +108,15 @@ async function createRecorder(): Promise<WebAudioRecorderWav | WebAudioRecorderO
       // Carregar encoder MP3 se ainda não foi carregado
       if (!loadedEncoders.mp3) {
         updateStatus('processing', 'Carregando encoder MP3...');
-        // Para demo local, usar caminho direto da pasta public
-        // Em produção, a auto-detecção funcionará
-        const mp3Path = '/Mp3LameEncoder.min.js';
         try {
-          await loadMp3LameEncoder(mp3Path);
+          // Carrega automaticamente de /encoders/Mp3LameEncoder.min.js
+          await loadMp3LameEncoder();
           loadedEncoders.mp3 = true;
-          console.log(`✅ Mp3LameEncoder loaded from: ${mp3Path}`);
-        } catch (error) {
-          // Se falhar, tentar auto-detecção
-          console.warn('Direct path failed, trying auto-detection:', error);
-          try {
-            await loadMp3LameEncoder();
-            loadedEncoders.mp3 = true;
-            console.log('✅ Mp3LameEncoder loaded automatically');
-          } catch (e) {
-            throw new Error(`Failed to load MP3 encoder: ${(e as Error).message}`);
-          }
+          console.log(`✅ Mp3LameEncoder loaded`);
+        } catch (e: any) {
+          console.error('Failed to load MP3 encoder:', e);
+          updateStatus('error', 'Erro ao carregar encoder MP3: ' + e.message);
+          throw e;
         }
       }
       return new WebAudioRecorderMp3(audioContext, options, { bitrate: 192 });
@@ -183,6 +167,17 @@ async function stopRecording() {
   }
 
   try {
+    // Verificar se gravou por tempo suficiente (mínimo 0.5s para OGG/MP3)
+    const format = formatSelect.value as AudioFormat;
+    const elapsed = Date.now() - startTime;
+    const MIN_DURATION = 500; // 500ms = 0.5 segundo
+    
+    if ((format === 'ogg' || format === 'mp3') && elapsed < MIN_DURATION) {
+      const remaining = ((MIN_DURATION - elapsed) / 1000).toFixed(1);
+      updateStatus('error', `Grave por pelo menos 0.5 segundo (faltam ${remaining}s)`);
+      return;
+    }
+
     updateStatus('processing', 'Processando...');
     stopBtn.disabled = true;
     cancelBtn.disabled = true;
@@ -198,7 +193,15 @@ async function stopRecording() {
     formatSelect.disabled = false;
   } catch (error) {
     console.error('Error stopping recording:', error);
-    updateStatus('error', `Erro ao parar: ${(error as Error).message}`);
+    
+    // Mensagem de erro mais específica para gravação curta
+    const errorMsg = (error as Error).message;
+    if (errorMsg.includes('Insufficient audio data')) {
+      updateStatus('error', 'Gravação muito curta! Por favor, grave por pelo menos 0.5 segundo.');
+    } else {
+      updateStatus('error', `Erro ao parar: ${errorMsg}`);
+    }
+    
     startBtn.disabled = false;
     formatSelect.disabled = false;
   }

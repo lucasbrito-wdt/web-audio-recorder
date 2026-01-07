@@ -27,6 +27,8 @@ export class OggVorbisEncoderWrapper implements AudioEncoder {
   private sampleRate: number;
   private numChannels: number;
   private quality: number;
+  private bufferCount: number = 0;
+  private totalSamples: number = 0;
 
   /**
    * Cria uma instância do encoder OGG Vorbis
@@ -36,58 +38,172 @@ export class OggVorbisEncoderWrapper implements AudioEncoder {
    * @param options - Opções do encoder OGG
    */
   constructor(sampleRate: number, numChannels: number, options: OggVorbisOptions = {}) {
+    // Validar parâmetros
+    if (!Number.isFinite(sampleRate) || sampleRate <= 0) {
+      throw new Error(`Invalid sampleRate: ${sampleRate}. Must be a positive number.`);
+    }
+    
+    if (!Number.isInteger(numChannels) || numChannels < 1 || numChannels > 2) {
+      throw new Error(`Invalid numChannels: ${numChannels}. Must be 1 (mono) or 2 (stereo).`);
+    }
+
     this.sampleRate = sampleRate;
     this.numChannels = numChannels;
-    this.quality = options.quality ?? 0.5;
+    
+    // Validar e limitar qualidade (-0.1 a 1.0 para Vorbis)
+    const rawQuality = options.quality ?? 0.5;
+    if (!Number.isFinite(rawQuality)) {
+      this.quality = 0.5;
+    } else {
+      this.quality = Math.max(-0.1, Math.min(1.0, rawQuality));
+    }
 
     // Verificar se OggVorbisEncoder está disponível
     if (typeof OggVorbisEncoder === 'undefined') {
-      throw new Error('OggVorbisEncoder is not loaded. Make sure to load OggVorbisEncoder.min.js before using this encoder.');
+      throw new Error('OggVorbisEncoder is not loaded.');
     }
 
-    // Criar instância do encoder
-    this.encoder = new OggVorbisEncoder(sampleRate, numChannels, this.quality);
+    try {
+      this.encoder = new OggVorbisEncoder(sampleRate, numChannels, this.quality);
+    } catch (error) {
+      throw new Error(`Failed to initialize OGG encoder: ${String(error)}`);
+    }
   }
 
   /**
    * Codifica buffers de áudio
-   * 
-   * @param buffers - Array de buffers Float32Array, um por canal
    */
   encode(buffers: Float32Array[]): void {
     if (!this.encoder) {
       throw new Error('Encoder is not initialized');
     }
 
-    if (buffers.length !== this.numChannels) {
-      throw new Error(`Expected ${this.numChannels} channels, got ${buffers.length}`);
+    // Validação básica de entrada
+    if (!buffers || buffers.length === 0) {
+      return;
     }
 
-    this.encoder.encode(buffers);
+    // Preparar buffers para o encoder
+    // O encoder espera exatamente this.numChannels arrays
+    const finalBuffers: Float32Array[] = [];
+    
+    // 1. Resolver mismatch de canais
+    if (buffers.length === this.numChannels) {
+      // Caso ideal: número de canais bate
+      for (let i = 0; i < this.numChannels; i++) {
+        finalBuffers.push(buffers[i]);
+      }
+    } else if (buffers.length === 1 && this.numChannels === 2) {
+      // Mono -> Stereo (Duplicar)
+      finalBuffers.push(buffers[0]);
+      finalBuffers.push(buffers[0]);
+    } else if (buffers.length >= 2 && this.numChannels === 1) {
+      // Stereo -> Mono (Pegar apenas o primeiro canal - downmixing simples)
+      finalBuffers.push(buffers[0]);
+    } else {
+      // Fallback genérico: preencher com o que tem ou silêncio
+      for (let i = 0; i < this.numChannels; i++) {
+        if (i < buffers.length) {
+          finalBuffers.push(buffers[i]);
+        } else {
+          // Duplicar o último disponível
+          finalBuffers.push(buffers[buffers.length - 1]);
+        }
+      }
+    }
+
+    // 2. Sanitizar dados (Safe Clamping)
+    // Importante: valores exatamente 1.0 ou -1.0 podem causar crash em algumas versões do Vorbis encoder
+    // Usamos um clamping levemente conservador para garantir estabilidade
+    const SAFE_MAX = 0.9999; 
+    const SAFE_MIN = -0.9999;
+
+    const safeBuffers: Float32Array[] = finalBuffers.map(buffer => {
+      // Criar nova cópia para não alterar o original e garantir propriedade
+      const copy = new Float32Array(buffer.length);
+      for (let i = 0; i < buffer.length; i++) {
+        const val = buffer[i];
+        if (!Number.isFinite(val)) {
+          copy[i] = 0; // Remove NaN/Infinity
+        } else {
+          // Clamp conservador
+          if (val > SAFE_MAX) copy[i] = SAFE_MAX;
+          else if (val < SAFE_MIN) copy[i] = SAFE_MIN;
+          else copy[i] = val;
+        }
+      }
+      return copy;
+    });
+
+    try {
+      this.encoder.encode(safeBuffers);
+      this.bufferCount++;
+      this.totalSamples += safeBuffers[0].length;
+    } catch (error) {
+      throw new Error(`OGG encoding error: ${String(error)}`);
+    }
   }
 
   /**
    * Finaliza o encoding e retorna o Blob OGG
-   * 
-   * @param mimeType - Tipo MIME (padrão: 'audio/ogg')
-   * @returns Blob contendo o arquivo OGG
    */
   finish(mimeType: string = 'audio/ogg'): Blob {
     if (!this.encoder) {
       throw new Error('Encoder is not initialized');
     }
 
-    return this.encoder.finish(mimeType);
+    // Requisito mínimo de samples (0.5s)
+    const MIN_SAMPLES = this.sampleRate * 0.5;
+    if (this.totalSamples < MIN_SAMPLES) {
+      // Se não atingiu o mínimo, gera silêncio para completar e salvar o arquivo
+      // Isso é melhor que lançar erro ou crashar
+      const missingSamples = Math.ceil(MIN_SAMPLES - this.totalSamples);
+      if (missingSamples > 0 && missingSamples < this.sampleRate * 10) { // Limite de 10s de silêncio
+        console.warn(`OGG Encoder: Padding with ${missingSamples} samples of silence to reach minimum duration.`);
+        const silence = new Float32Array(missingSamples); // Preenchido com zeros por padrão
+        const silenceBuffers = Array(this.numChannels).fill(silence);
+        try {
+          this.encoder.encode(silenceBuffers);
+        } catch (e) {
+          console.error("Failed to pad silence:", e);
+        }
+      } else if (this.bufferCount === 0) {
+        throw new Error('No audio data recorded.');
+      }
+    }
+
+    try {
+      // Tentar finalizar
+      const blob = this.encoder.finish(mimeType);
+      return blob;
+    } catch (error) {
+      const msg = String(error);
+      // Se for abort(3), geralmente é erro fatal de memória ou interno do WASM
+      if (msg.includes('abort')) {
+         throw new Error(
+           `OGG Critical Error: The encoder crashed (${msg}). ` +
+           `This usually happens due to memory issues or invalid audio data. ` +
+           `Stats: ${this.totalSamples} samples, ${this.bufferCount} buffers.`
+         );
+      }
+      throw new Error(`OGG finish() error: ${msg}`);
+    }
   }
 
   /**
    * Cancela o encoding
    */
   cancel(): void {
-    if (this.encoder) {
-      this.encoder.cancel();
-      this.encoder = null;
+    try {
+      if (this.encoder) {
+        this.encoder.cancel();
+      }
+    } catch (e) {
+      // Ignorar erros no cancelamento
     }
+    this.encoder = null;
+    this.bufferCount = 0;
+    this.totalSamples = 0;
   }
 }
 
@@ -98,24 +214,31 @@ export class OggVorbisEncoderWrapper implements AudioEncoder {
  * @returns Promise que resolve quando o script é carregado
  */
 export async function loadOggVorbisEncoder(scriptUrl?: string): Promise<void> {
-  // Se não fornecido, tentar auto-detectar
+  // Se URL não fornecida, tentar encontrar no padrão /encoders
   if (!scriptUrl) {
-    // Configurar paths dos arquivos .mem
-    configureEncoderPaths();
-    
-    // Tentar encontrar o arquivo automaticamente
     const foundPath = await findEncoderPath('OggVorbisEncoder.min.js');
     if (!foundPath) {
       throw new Error(
-        'Could not find OggVorbisEncoder.min.js. ' +
-        'Please provide the path manually or ensure the package is installed correctly.'
+        'Could not find OggVorbisEncoder.min.js in public/encoders/ folder.\n' +
+        'Please copy lib/*.js files to your public/encoders/ directory.'
       );
     }
     scriptUrl = foundPath;
-  } else {
-    // Se fornecido, ainda configurar paths dos .mem
-    configureEncoderPaths();
   }
+  
+  // Extrair diretório base da URL para configurar carregamento do .mem
+  let baseUrl = '';
+  const lastSlash = scriptUrl.lastIndexOf('/');
+  if (lastSlash !== -1) {
+    baseUrl = scriptUrl.substring(0, lastSlash);
+  } else {
+    // Se não tem barra, assumimos que está na raiz ou relativo simples
+    // Mas se foi retornado por findEncoderPath como 'OggVorbis...', então deve ser ''
+    baseUrl = 'encoders'; // Melhor chute para fallback
+  }
+  
+  // Configurar encoder (isso define OggVorbisEncoderConfig global)
+  configureEncoderPaths(baseUrl);
 
   return loadOggVorbisEncoderInternal(scriptUrl);
 }

@@ -83,6 +83,28 @@ export class WebAudioRecorder {
       // Criar source node a partir do stream
       this.sourceNode = this.audioContext.createMediaStreamSource(stream);
 
+      // Detectar número real de canais do stream
+      let detectedChannels = this.numChannels;
+      const audioTracks = stream.getAudioTracks();
+      if (audioTracks.length > 0) {
+        // Tentar obter do getSettings (navegadores modernos)
+        const settings = audioTracks[0].getSettings();
+        if (settings.channelCount) {
+          detectedChannels = settings.channelCount;
+        } else {
+          // Fallback: assumir que a maioria dos microfones é mono (1) ou usar padrão (2)
+          // Mas como não podemos ter certeza sem processar, vamos confiar na configuração 
+          // ou no padrão do AudioContext
+          console.log('Channel count not available in track settings, using default/configured:', this.numChannels);
+        }
+      }
+
+      // Atualizar numChannels se necessário
+      if (detectedChannels !== this.numChannels) {
+        console.log(`Detected ${detectedChannels} channel(s) in stream, adjusting from ${this.numChannels} to ${detectedChannels}`);
+        this.numChannels = detectedChannels;
+      }
+
       // Criar script processor para capturar dados de áudio
       this.scriptProcessor = this.audioContext.createScriptProcessor(
         this.bufferSize,
@@ -102,16 +124,76 @@ export class WebAudioRecorder {
 
         try {
           const inputBuffer = event.inputBuffer;
+          const actualChannels = inputBuffer.numberOfChannels;
           const buffers: Float32Array[] = [];
 
-          // Extrair dados de cada canal
-          for (let channel = 0; channel < this.numChannels; channel++) {
+          // Extrair dados de cada canal disponível
+          for (let channel = 0; channel < actualChannels; channel++) {
             const channelData = inputBuffer.getChannelData(channel);
             buffers.push(new Float32Array(channelData));
           }
 
+          // Garantir que temos exatamente o número de canais esperado
+          // Se o número de canais do buffer não corresponde ao esperado, ajustar
+          if (actualChannels !== this.numChannels) {
+            if (actualChannels === 1 && this.numChannels === 2) {
+              // Mono -> Estéreo: duplicar o canal
+              buffers.push(new Float32Array(buffers[0]));
+            } else if (actualChannels === 2 && this.numChannels === 1) {
+              // Estéreo -> Mono: usar apenas o primeiro canal
+              buffers.splice(1);
+            } else if (actualChannels < this.numChannels) {
+              // Menos canais do que esperado: duplicar o último canal
+              while (buffers.length < this.numChannels && buffers.length > 0) {
+                buffers.push(new Float32Array(buffers[buffers.length - 1]));
+              }
+            } else if (actualChannels > this.numChannels) {
+              // Mais canais do que esperado: usar apenas os primeiros
+              buffers.splice(this.numChannels);
+            }
+          }
+
+          // Validação final CRÍTICA: garantir que temos exatamente o número correto de canais
+          // O encoder Emscripten é muito sensível e aborta se o número de canais não corresponder
+          if (buffers.length !== this.numChannels) {
+            console.warn(
+              `Channel mismatch detected: Expected ${this.numChannels} channels, ` +
+              `got ${buffers.length} after adjustment. ` +
+              `Actual input channels: ${actualChannels}. ` +
+              `Fixing by ${buffers.length < this.numChannels ? 'duplicating' : 'removing'} channels.`
+            );
+            
+            // Tentar corrigir: duplicar ou remover canais conforme necessário
+            while (buffers.length < this.numChannels) {
+              if (buffers.length > 0) {
+                // Duplicar o primeiro canal (ou último se houver mais de um)
+                const sourceChannel = buffers[buffers.length - 1];
+                buffers.push(new Float32Array(sourceChannel));
+              } else {
+                // Se não há buffers, criar um buffer vazio (não deveria acontecer)
+                console.error('No buffers available! Creating empty buffer.');
+                buffers.push(new Float32Array(inputBuffer.length));
+              }
+            }
+            
+            // Remover canais extras se houver mais do que o esperado
+            if (buffers.length > this.numChannels) {
+              buffers.splice(this.numChannels);
+            }
+          }
+
+          // Validação final absoluta: se ainda não temos o número correto, não codificar
+          if (buffers.length !== this.numChannels) {
+            console.error(
+              `CRITICAL: Failed to fix channel mismatch. ` +
+              `Expected ${this.numChannels}, got ${buffers.length}. ` +
+              `Skipping this buffer to prevent encoder abort().`
+            );
+            return; // Não codificar este buffer para evitar abort()
+          }
+
           // Codificar os dados
-          if (this.encoder) {
+          if (this.encoder && buffers.length > 0) {
             this.encoder.encode(buffers);
           }
         } catch (error) {
@@ -155,6 +237,10 @@ export class WebAudioRecorder {
       if (!this.encoder) {
         throw new Error('Encoder is not initialized');
       }
+
+      // Aguardar um pouco para garantir que todos os callbacks de áudio foram processados
+      // Isso evita condições de corrida onde finish() é chamado antes de todos os buffers serem processados
+      await new Promise(resolve => setTimeout(resolve, 50));
 
       const blob = this.encoder.finish(mimeType);
       const url = URL.createObjectURL(blob);
